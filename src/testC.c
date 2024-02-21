@@ -14,7 +14,8 @@ int main() {
 
     // Print the character x amount of times to stdout
     printf("Printing the character '%c' %d times:\n", character, x);
-    for (int i = 0; i < x; i++) {
+    int i;
+    for (i = 0; i < x; i++) {
         printf("%c", character);
     }
     printf("\n");
