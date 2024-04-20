@@ -24,21 +24,21 @@ class Connection:
         self.stderr_pipe = std_err
     
     def initialize (self):
-        self.proc = sp.Popen([self.SUBPROCESS_PROGRAM].append(self.arguments), 
+        self.proc = sp.Popen([self.SUBPROCESS_PROGRAM] + self.arguments, 
                              stdin=sp.PIPE, 
                              stdout=sp.PIPE,
                              stderr=sp.PIPE)
         
-        self.std_out = self.proc.stdout.fileno()
-        self.std_in = self.proc.stdin.fileno()
-        self.std_err = self.proc.stderr.fileno()
+        self.stdout_pipe = self.proc.stdout.fileno()
+        self.stdin_pipe = self.proc.stdin.fileno()
+        self.stderr_pipe = self.proc.stderr.fileno()
 
         # set file descriptor to non blocking mode to make asynchronous reading possible 
-        flags = fcntl.fcntl(self.std_out, fcntl.F_GETFL)
-        fcntl.fcntl(self.std_out, fcntl.F_SETFL, flags | O_NONBLOCK)
+        flags = fcntl.fcntl(self.stdout_pipe, fcntl.F_GETFL)
+        fcntl.fcntl(self.stdout_pipe, fcntl.F_SETFL, flags | O_NONBLOCK)
 
-        stderr_flags = fcntl.fcntl(self.std_err, fcntl.F_GETFL)
-        fcntl.fcntl(self.std_err, fcntl.F_SETFL, stderr_flags | O_NONBLOCK)
+        stderr_flags = fcntl.fcntl(self.stderr_pipe, fcntl.F_GETFL)
+        fcntl.fcntl(self.stderr_pipe, fcntl.F_SETFL, stderr_flags | O_NONBLOCK)
        
     def terminate (self):
         if self.proc is not None:

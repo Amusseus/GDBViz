@@ -1,24 +1,26 @@
-import Connection
+from Connection import Connection
 import os
 import select
 import sys
 
-SELECT_TIMEOUT = 0.1 
 READ_BUFFER_SIZE = 1024
 
 # helper method used to read from gdb pipes
 def read_fd (fd):
-    return os.read(fd, READ_BUFFER_SIZE).decode()
+    try: 
+        return os.read(fd, READ_BUFFER_SIZE).decode()
+    except BlockingIOError:
+        return ""
 
 if __name__ == "__main__": 
     
     # read command line arguments from user 
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 2:
         print("Incorrect amount of arguments provided\n")
         print("Usage: python3 GDBViz.py programName [optional arguments ...]")
         sys.exit(1)
 
-    gdb_arugments = sys.argv[2:]
+    gdb_arugments = sys.argv[1:]
     gdb = Connection(gdb_arugments)
     gdb.initialize()
 
@@ -50,9 +52,9 @@ if __name__ == "__main__":
             print(stdout_buffer)
 
         if sys.stdin in readable:
-            for line in sys.stdin: 
-                if line == "stop":
-                    gdb.terminate()
-                    sys.exit(0)
-                gdb.send(line + '\n')
+            stdin_read = sys.stdin.readline().strip()
+            if stdin_read == "stop":
+                gdb.terminate()
+                sys.exit(0)
+            gdb.send(stdin_read + '\n')
 
