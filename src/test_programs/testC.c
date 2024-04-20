@@ -5,18 +5,18 @@ int main() {
     char character;
 
     // Read the integer x from stdin
-    printf("Enter an integer x: ");
+    printf("Enter an integer x: \n");
     scanf("%d", &x);
 
     // Read the character from stdin
-    printf("Enter a character: ");
+    printf("Enter a character: \n");
     scanf(" %c", &character);
 
     // Print the character x amount of times to stdout
     printf("Printing the character '%c' %d times:\n", character, x);
     int i;
     for (i = 0; i < x; i++) {
-        printf("%c", character);
+        printf("%c\n", character);
     }
     printf("\n");
 
