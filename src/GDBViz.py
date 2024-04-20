@@ -20,7 +20,14 @@ if __name__ == "__main__":
         print("Usage: python3 GDBViz.py programName [optional arguments ...]")
         sys.exit(1)
 
-    gdb_arugments = sys.argv[1:]
+    argument_finish_index = len(sys.argv)
+    if ">" in sys.argv or ">>" in sys.argv: 
+        if ">" in sys.argv:
+            argument_finish_index = sys.argv.index(">")
+        else: 
+            argument_finish_index = sys.argv.index(">>")
+
+    gdb_arugments = sys.argv[1:argument_finish_index]
     gdb = Connection(gdb_arugments)
     gdb.initialize()
 
