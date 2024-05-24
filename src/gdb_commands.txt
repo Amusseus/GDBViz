@@ -1,0 +1,14 @@
+set pagination off
+file example
+break main
+run
+print &i
+print i
+print sizeof(i)
+print &j
+print j
+print sizeof(j)
+print &ptr
+print ptr
+print sizeof(ptr)
+quit

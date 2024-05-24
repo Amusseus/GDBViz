@@ -2,7 +2,7 @@
 
 // Function to print Hello World and the number of times it has been printed
 void printHello(int count) {
-    printf("Hello World num: %dn", count);
+    printf("Hello World num: %d\n", count);
 }
 
 int main() {
