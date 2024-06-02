@@ -19,14 +19,8 @@ def read_fd (fd):
 def generate_viz_commands(info_local_data): 
     command_list = []
     ''' generate commands here based on info_local_data '''
-    command_list.append("print x")
-    command_list.append("print x")
     command_list.append("info locals")
     command_list.append("info locals")
-    command_list.append("print x")
-    command_list.append("info locals")
-    command_list.append("print x")
-    command_list.append("print &x")
     return command_list
 
 def execute_viz(result_data, file_name=None):
