@@ -5,8 +5,20 @@ import sys
 
 READ_BUFFER_SIZE = 1024
 INFO_COMMAND = "info locals"
+BACKTRACE = "backtrace"
 GENERAL_FILE_NAME = "mem_image.png"
 GDB_PHRASE = "(gdb)"
+VAR_SPLIT_VAL = " ; "
+
+
+# var class to define an object to store all information about a var easily 
+class Var:
+    def __init__(self, name, value=None):
+        self.name = name
+        self.address = None
+        self.type = None # will be held as a string 
+        self.value = value
+
 
 # helper method used to read from gdb pipes
 def read_fd (fd):
@@ -15,12 +27,26 @@ def read_fd (fd):
     except BlockingIOError:
         return ""
 
-# helper method generates mutli-command query for viz command based on info locals
-def generate_viz_commands(info_local_data): 
+# takes backtrace result and generates a list of commands which gets info local results from all frames
+def generate_backtrace_command(backtrace_result):
     command_list = []
-    ''' generate commands here based on info_local_data '''
-    command_list.append("info locals")
-    command_list.append("info locals")
+    num_frames = len(backtrace_result.strip().split("\n"))
+    for i in range(num_frames):
+        command_list.append("frame " + str(i))
+        command_list.append(INFO_COMMAND)
+    return command_list 
+
+# takes result from info locals from each frame and generates commands to get neccessary information from all variables
+def generate_var_info_command(info_local_result): 
+    command_list = []
+    all_vars = [] # list of all variables from all frames
+    for i in range(1, len(info_local_result), 2):
+        var_list = info_local_result[i].split(VAR_SPLIT_VAL)
+        for var in var_list: 
+            var = var.split("=")[0].strip() # turns fileInIn = 1 into fileInIn
+        all_vars += var_list
+
+    
     return command_list
 
 def execute_viz(result_data, file_name=None):
@@ -60,6 +86,8 @@ if __name__ == "__main__":
     
     '''
     mc_mode = False # Multi-command
+    backtrace_mode = False
+    info_var_mode = False
     mc_input = None
     mc_output = None
     sc_output = "" # Single-command output (used to read the full response for each command inside a multi-command query)
@@ -104,12 +132,12 @@ if __name__ == "__main__":
             if mc_mode and sc_ready: 
                 # format sc_output correctly 
                 result = sc_output[:sc_output.find(GDB_PHRASE)]
-                if mc_input is None and mc_output is None:
-                    mc_input = generate_viz_commands(result)
+                if mc_input is None and mc_output is None and backtrace_mode:
+                    mc_input = generate_backtrace_command(result)
                     mc_output = []
                 else:
-                    result = result.replace("\n", " ; ")
-                    result = result.strip(" ; ")
+                    result = result.replace("\n", VAR_SPLIT_VAL)
+                    result = result.strip(VAR_SPLIT_VAL)
                     mc_output.append(result)
 
                 # set sc_output for next command in mc query 
@@ -123,10 +151,20 @@ if __name__ == "__main__":
                 if len(mc_input) > 0: 
                     gdb.send(mc_input.pop(0) + '\n')
                 else: 
-                    execute_viz(mc_output)
-                    mc_mode = False
-                    mc_input = None
-                    mc_output = None
+                    if backtrace_mode: 
+                        mc_input = generate_var_info_command(mc_output)
+                        mc_output = []
+                        backtrace_mode = False
+                        info_var_mode = True
+
+                        gdb.send(mc_input.pop(0) + '\n')
+                    elif info_var_mode: 
+                        execute_viz(mc_output)
+                        mc_mode = False
+                        mc_input = None
+                        mc_output = None
+                        info_var_mode = False
+
             elif not mc_mode:
                 # print output to stdout as regular
                 print(stdout_buffer)
@@ -139,7 +177,8 @@ if __name__ == "__main__":
                 sys.exit(0)    
             elif len(stdin_read) >= 3 and stdin_read[:3].lower() == "viz": 
                 mc_mode = True
-                gdb.send(INFO_COMMAND + '\n')
+                backtrace_mode = True
+                gdb.send(BACKTRACE + '\n')
             else: 
                 gdb.send(stdin_read + '\n')
 
