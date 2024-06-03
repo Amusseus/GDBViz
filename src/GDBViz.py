@@ -6,18 +6,28 @@ import sys
 READ_BUFFER_SIZE = 1024
 INFO_COMMAND = "info locals"
 BACKTRACE = "backtrace"
-GENERAL_FILE_NAME = "mem_image.png"
 GDB_PHRASE = "(gdb)"
 VAR_SPLIT_VAL = " ; "
 
+all_vars = {} # global dictionary used to keep track of all var during vix command, key:value -> name: Var object 
 
 # var class to define an object to store all information about a var easily 
 class Var:
-    def __init__(self, name, value=None):
+    def __init__(self, name, frame, value=None):
         self.name = name
         self.address = None
         self.type = None # will be held as a string 
-        self.value = value
+        self.value = value 
+        self.frame = frame
+
+def print_var_dict():
+    for key in all_vars.keys():
+        print("<----------->")
+        print("Printing info about var: " + key)
+        print("type = " + all_vars[key].type)
+        print("size = " + all_vars[key].size)
+        print("address = " + all_vars[key].address)
+        print(">-----------<")
 
 
 # helper method used to read from gdb pipes
@@ -39,15 +49,41 @@ def generate_backtrace_command(backtrace_result):
 # takes result from info locals from each frame and generates commands to get neccessary information from all variables
 def generate_var_info_command(info_local_result): 
     command_list = []
-    all_vars = [] # list of all variables from all frames
+    frame_number = 0
     for i in range(1, len(info_local_result), 2):
         var_list = info_local_result[i].split(VAR_SPLIT_VAL)
         for var in var_list: 
-            var = var.split("=")[0].strip() # turns fileInIn = 1 into fileInIn
-        all_vars += var_list
-
+            split = var.split("=")
+            name = split[0].strip()
+            value = split[1].strip()
+            all_vars[name] = Var(name, frame_number, value)
+        frame_number += 1
     
-    return command_list
+    var_query_order = []
+
+    for key in all_vars.keys():
+        '''
+        Have to switch to the variable frame before querying
+        Information to query about var:
+            1. ptype
+            2. sizeof 
+            3. & (address)
+        '''
+        command_list.append("frame " + str(all_vars[key].frame))  
+        command_list.append("ptype " + key)
+        command_list.append("print sizeof(" + key + ")")
+        command_list.append("print &" + key)
+        var_query_order.append(key)
+    
+    return command_list, var_query_order
+
+def update_var_dictionary(var_query_order, var_info_result):
+    var_info_index = 0
+    for var in var_query_order:
+        all_vars[var].type = var_info_result[var_info_index + 1]
+        all_vars[var].size = var_info_result[var_info_index + 2]
+        all_vars[var].address = var_info_result[var_info_index + 3]
+        var_info_index += 4
 
 def execute_viz(result_data, file_name=None):
     # generates the visualization of memory based on result_data
@@ -88,6 +124,7 @@ if __name__ == "__main__":
     mc_mode = False # Multi-command
     backtrace_mode = False
     info_var_mode = False
+    info_var_query_order = None
     mc_input = None
     mc_output = None
     sc_output = "" # Single-command output (used to read the full response for each command inside a multi-command query)
@@ -135,10 +172,12 @@ if __name__ == "__main__":
                 if mc_input is None and mc_output is None and backtrace_mode:
                     mc_input = generate_backtrace_command(result)
                     mc_output = []
-                else:
+                elif backtrace_mode:
                     result = result.replace("\n", VAR_SPLIT_VAL)
                     result = result.strip(VAR_SPLIT_VAL)
                     mc_output.append(result)
+                elif info_var_mode:
+                    mc_output.append(result.strip())
 
                 # set sc_output for next command in mc query 
                 sc_ready = False
@@ -152,14 +191,15 @@ if __name__ == "__main__":
                     gdb.send(mc_input.pop(0) + '\n')
                 else: 
                     if backtrace_mode: 
-                        mc_input = generate_var_info_command(mc_output)
+                        mc_input, info_var_query_order = generate_var_info_command(mc_output)
                         mc_output = []
                         backtrace_mode = False
                         info_var_mode = True
 
                         gdb.send(mc_input.pop(0) + '\n')
                     elif info_var_mode: 
-                        execute_viz(mc_output)
+                        update_var_dictionary(info_var_query_order, mc_output)
+                        print_var_dict()
                         mc_mode = False
                         mc_input = None
                         mc_output = None
