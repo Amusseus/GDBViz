@@ -10,6 +10,7 @@ BACKTRACE = "backtrace"
 GDB_PHRASE = "(gdb)"
 STRUCT = "struct"
 VAR_SPLIT_VAL = " ; "
+NO_ACCESS_PHRASE = "Cannot access memory"
 
 all_vars = {} # global dictionary used to keep track of all var during vix command, key:value -> name: Var object 
 
@@ -87,18 +88,24 @@ def generate_var_info_command(info_local_result):
 def update_var_dictionary(var_query_order, var_info_result):
     pattern = re.compile(r'\s*([^{};]+?;)\s*') # to remove from struct type = {...}
     var_info_index = 0
+    # print("PRINTING RESULTS")
+    # print("size of var_query_order: " + str(len(var_query_order)))
+    # print("size of var_info_result: " + str(len(var_info_result)))
 
     var_order = []
     for var in var_query_order:
         all_vars[var].type = var_info_result[var_info_index + 1].split("=")[1].strip()
         all_vars[var].size = var_info_result[var_info_index + 2].split("=")[1].strip()
         all_vars[var].address = var_info_result[var_info_index + 3].split("=")[1].strip()
-        all_vars[var].value = var_info_result[var_info_index + 4].split("=")[1].strip()
-        print(all_vars[var].value)
+        if NO_ACCESS_PHRASE in var_info_result[var_info_index + 4]:
+            all_vars[var].value = var_info_result[var_info_index + 4]
+        else: 
+            all_vars[var].value = var_info_result[var_info_index + 4].split("=")[1].strip()
+        #print(all_vars[var].value)
         var_info_index += 5
 
         # checks if var is a struct and needs further querying     
-        if STRUCT in all_vars[var].type and all_vars[var].type[-2:] != "**" and all_vars[var].value[-3:] != "0x0":
+        if STRUCT in all_vars[var].type and all_vars[var].type[-2:] != "**" and all_vars[var].value[-3:] != "0x0" and NO_ACCESS_PHRASE not in all_vars[var].value:
             matches = pattern.findall(all_vars[var].type)
             members = [match.strip().strip(';') for match in matches]
             for mem in members: 
@@ -125,6 +132,8 @@ def update_var_dictionary(var_query_order, var_info_result):
             command_list.append("print sizeof(" + var + ")")
             command_list.append("print &" + var)
             command_list.append("print " + var)
+            #print("GOING TO RETURN COMMANDS")
+            #print(command_list)
         return command_list, var_order
     else:
         return None, None
@@ -192,9 +201,13 @@ if __name__ == "__main__":
             stderr_buffer = ""
             stderr_pipe_read = read_fd(gdb.stderr_pipe)
             while len(stderr_pipe_read) != 0: 
-                stderr_buffer += stderr_pipe_read
+                if mc_mode: 
+                    sc_output += stderr_pipe_read
+                else: 
+                    stderr_buffer += stderr_pipe_read
                 stderr_pipe_read = read_fd(gdb.stderr_pipe)
-            print(stderr_buffer)
+            if not mc_mode:
+                print(stderr_buffer)
                 
         # gdb STDOUT
         if gdb.stdout_pipe in readable:
@@ -210,53 +223,52 @@ if __name__ == "__main__":
                     stdout_buffer += stdout_pipe_read
                 stdout_pipe_read = read_fd(gdb.stdout_pipe)
 
-            if mc_mode and sc_ready: 
-                # format sc_output correctly 
-                result = sc_output[:sc_output.find(GDB_PHRASE)]
-                if mc_input is None and mc_output is None and backtrace_mode:
-                    mc_input = generate_backtrace_command(result)
-                    mc_output = []
-                elif backtrace_mode:
-                    result = result.replace("\n", VAR_SPLIT_VAL)
-                    result = result.strip(VAR_SPLIT_VAL)
-                    mc_output.append(result)
-                elif info_var_mode:
-                    mc_output.append(result.strip())
-
-                # set sc_output for next command in mc query 
-                sc_ready = False
-                if len(sc_output) > sc_output.find(GDB_PHRASE) + len(GDB_PHRASE):
-                    sc_output = sc_output[sc_output.find(GDB_PHRASE) + len(GDB_PHRASE):]
-                else: 
-                    sc_output = ""
-
-                # if avalaible run next command 
-                if len(mc_input) > 0: 
-                    gdb.send(mc_input.pop(0) + '\n')
-                else: 
-                    if backtrace_mode: 
-                        mc_input, info_var_query_order = generate_var_info_command(mc_output)
-                        mc_output = []
-                        backtrace_mode = False
-                        info_var_mode = True
-                        gdb.send(mc_input.pop(0) + '\n')
-
-                    elif info_var_mode: 
-                        mc_input, info_var_query_order = update_var_dictionary(info_var_query_order, mc_output)
-                        if mc_input is None and info_var_query_order is None:
-                            mc_mode = False
-                            mc_input = None
-                            mc_output = None
-                            info_var_mode = False
-                            print_var_dict()
-                        else: 
-                            gdb.send(mc_input.pop(0) + '\n')
-                            mc_output = []
-
-
-            elif not mc_mode:
-                # print output to stdout as regular
+            if not mc_mode:
+            # print output to stdout as regular
                 print(stdout_buffer)
+
+        if mc_mode and sc_ready: 
+            # format sc_output correctly 
+            result = sc_output[:sc_output.find(GDB_PHRASE)]
+            if mc_input is None and mc_output is None and backtrace_mode:
+                mc_input = generate_backtrace_command(result)
+                mc_output = []
+            elif backtrace_mode:
+                result = result.replace("\n", VAR_SPLIT_VAL)
+                result = result.strip(VAR_SPLIT_VAL)
+                mc_output.append(result)
+            elif info_var_mode:
+                mc_output.append(result.strip())
+
+            # set sc_output for next command in mc query 
+            sc_ready = False
+            if len(sc_output) > sc_output.find(GDB_PHRASE) + len(GDB_PHRASE):
+                sc_output = sc_output[sc_output.find(GDB_PHRASE) + len(GDB_PHRASE):]
+            else: 
+                sc_output = ""
+
+            # if avalaible run next command 
+            if len(mc_input) > 0: 
+                gdb.send(mc_input.pop(0) + '\n')
+            else: 
+                if backtrace_mode: 
+                    mc_input, info_var_query_order = generate_var_info_command(mc_output)
+                    mc_output = []
+                    backtrace_mode = False
+                    info_var_mode = True
+                    gdb.send(mc_input.pop(0) + '\n')
+
+                elif info_var_mode: 
+                    mc_input, info_var_query_order = update_var_dictionary(info_var_query_order, mc_output)
+                    if mc_input is None and info_var_query_order is None:
+                        mc_mode = False
+                        mc_input = None
+                        mc_output = None
+                        info_var_mode = False
+                        print_var_dict()
+                    else: 
+                        gdb.send(mc_input.pop(0) + '\n')
+                        mc_output = []
 
         # USER STDIN
         if sys.stdin in readable:
