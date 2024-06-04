@@ -2,21 +2,24 @@ from Connection import Connection
 import os
 import select
 import sys
+import re
 
 READ_BUFFER_SIZE = 1024
 INFO_COMMAND = "info locals"
 BACKTRACE = "backtrace"
 GDB_PHRASE = "(gdb)"
+STRUCT = "struct"
 VAR_SPLIT_VAL = " ; "
 
 all_vars = {} # global dictionary used to keep track of all var during vix command, key:value -> name: Var object 
 
 # var class to define an object to store all information about a var easily 
 class Var:
-    def __init__(self, name, frame, value=None):
+    def __init__(self, name, frame, value=""):
         self.name = name
-        self.address = None
-        self.type = None # will be held as a string 
+        self.address = ""
+        self.type = "" # will be held as a string 
+        self.size = ""
         self.value = value 
         self.frame = frame
 
@@ -24,9 +27,12 @@ def print_var_dict():
     for key in all_vars.keys():
         print("<----------->")
         print("Printing info about var: " + key)
+
         print("type = " + all_vars[key].type)
         print("size = " + all_vars[key].size)
         print("address = " + all_vars[key].address)
+        print("value = " + all_vars[key].value)
+
         print(">-----------<")
 
 
@@ -73,17 +79,55 @@ def generate_var_info_command(info_local_result):
         command_list.append("ptype " + key)
         command_list.append("print sizeof(" + key + ")")
         command_list.append("print &" + key)
+        command_list.append("print " + key)
         var_query_order.append(key)
     
     return command_list, var_query_order
 
 def update_var_dictionary(var_query_order, var_info_result):
+    pattern = re.compile(r'\s*([^{};]+?;)\s*') # to remove from struct type = {...}
     var_info_index = 0
+
+    var_order = []
     for var in var_query_order:
-        all_vars[var].type = var_info_result[var_info_index + 1]
-        all_vars[var].size = var_info_result[var_info_index + 2]
-        all_vars[var].address = var_info_result[var_info_index + 3]
-        var_info_index += 4
+        all_vars[var].type = var_info_result[var_info_index + 1].split("=")[1].strip()
+        all_vars[var].size = var_info_result[var_info_index + 2].split("=")[1].strip()
+        all_vars[var].address = var_info_result[var_info_index + 3].split("=")[1].strip()
+        all_vars[var].value = var_info_result[var_info_index + 4].split("=")[1].strip()
+        print(all_vars[var].value)
+        var_info_index += 5
+
+        # checks if var is a struct and needs further querying     
+        if STRUCT in all_vars[var].type and all_vars[var].type[-2:] != "**" and all_vars[var].value[-3:] != "0x0":
+            matches = pattern.findall(all_vars[var].type)
+            members = [match.strip().strip(';') for match in matches]
+            for mem in members: 
+                # parse the variable declaration to get the varaiable name alone
+                attr_name = mem.split()[-1]
+                star_index = attr_name.rfind("*")
+                bracket_index = attr_name.find("[")
+                if star_index != -1: 
+                    attr_name = attr_name [star_index + 1:]
+                if bracket_index != -1:
+                    attr_name = attr_name[:bracket_index]
+
+                new_var_name = var + "." + attr_name
+                all_vars[new_var_name] = Var(new_var_name, all_vars[var].frame)
+                var_order.append(new_var_name)
+              
+                
+    command_list = []
+    # return order is going to be command to run, plus variable command order
+    if len(var_order) != 0:
+        for var in var_order: 
+            command_list.append("frame " + str(all_vars[var].frame))  
+            command_list.append("ptype " + var)
+            command_list.append("print sizeof(" + var + ")")
+            command_list.append("print &" + var)
+            command_list.append("print " + var)
+        return command_list, var_order
+    else:
+        return None, None
 
 def execute_viz(result_data, file_name=None):
     # generates the visualization of memory based on result_data
@@ -195,15 +239,20 @@ if __name__ == "__main__":
                         mc_output = []
                         backtrace_mode = False
                         info_var_mode = True
-
                         gdb.send(mc_input.pop(0) + '\n')
+
                     elif info_var_mode: 
-                        update_var_dictionary(info_var_query_order, mc_output)
-                        print_var_dict()
-                        mc_mode = False
-                        mc_input = None
-                        mc_output = None
-                        info_var_mode = False
+                        mc_input, info_var_query_order = update_var_dictionary(info_var_query_order, mc_output)
+                        if mc_input is None and info_var_query_order is None:
+                            mc_mode = False
+                            mc_input = None
+                            mc_output = None
+                            info_var_mode = False
+                            print_var_dict()
+                        else: 
+                            gdb.send(mc_input.pop(0) + '\n')
+                            mc_output = []
+
 
             elif not mc_mode:
                 # print output to stdout as regular
