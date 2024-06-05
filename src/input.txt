@@ -1,3 +1,0 @@
-i = 10
-j = 20
-ptr = 0x7fffffffe5d0
