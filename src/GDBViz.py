@@ -1,4 +1,5 @@
 from Connection import Connection
+from visualization import generate_mem_image
 import os
 import select
 import sys
@@ -6,6 +7,7 @@ import re
 
 READ_BUFFER_SIZE = 1024
 INFO_COMMAND = "info locals"
+INFO_MAPPINGS = "info proc mappings"
 BACKTRACE = "backtrace"
 GDB_PHRASE = "(gdb)"
 STRUCT = "struct"
@@ -13,6 +15,10 @@ VAR_SPLIT_VAL = " ; "
 NO_ACCESS_PHRASE = "Cannot access memory"
 
 all_vars = {} # global dictionary used to keep track of all var during vix command, key:value -> name: Var object 
+
+# proc mapping information stored as an array in the following format -> index 0: start addr, 1: end addr, 2:size, 3:offset, 4:objfile
+stack_info = None
+heap_info = None
 
 # var class to define an object to store all information about a var easily 
 class Var:
@@ -28,15 +34,34 @@ def print_var_dict():
     for key in all_vars.keys():
         print("<----------->")
         print("Printing info about var: " + key)
-
         print("type = " + all_vars[key].type)
         print("size = " + all_vars[key].size)
         print("address = " + all_vars[key].address)
         print("value = " + all_vars[key].value)
-
         print(">-----------<")
 
+def print_proc_mappings():
+    print("<------------->")
+    if stack_info is not None:
+        print("Printing Stack Information:")
+        print("Start Address: " + stack_info[0])
+        print("End Address: " + stack_info[1])
+        print("Size: " + stack_info[2])
+        print("Offset: " + stack_info[3])
+    else:
+        print("There is no Stack") # This should not be possible 
+    print() # print empty line
+    if heap_info is not None:
+        print("Printing Heap Information:")
+        print("Start Address: " + heap_info[0])
+        print("End Address: " + heap_info[1])
+        print("Size: " + heap_info[2])
+        print("Offset: " + heap_info[3])
+    else:
+        print("There is no Heap") 
+    print("<------------->")
 
+    
 # helper method used to read from gdb pipes
 def read_fd (fd):
     try: 
@@ -88,9 +113,6 @@ def generate_var_info_command(info_local_result):
 def update_var_dictionary(var_query_order, var_info_result):
     pattern = re.compile(r'\s*([^{};]+?;)\s*') # to remove from struct type = {...}
     var_info_index = 0
-    # print("PRINTING RESULTS")
-    # print("size of var_query_order: " + str(len(var_query_order)))
-    # print("size of var_info_result: " + str(len(var_info_result)))
 
     var_order = []
     for var in var_query_order:
@@ -132,19 +154,21 @@ def update_var_dictionary(var_query_order, var_info_result):
             command_list.append("print sizeof(" + var + ")")
             command_list.append("print &" + var)
             command_list.append("print " + var)
-            #print("GOING TO RETURN COMMANDS")
-            #print(command_list)
         return command_list, var_order
     else:
         return None, None
 
-def execute_viz(result_data, file_name=None):
-    # generates the visualization of memory based on result_data
-    # if no file_name specified, use generic name
-    print("THIS IS MOGHY PRINITNG ------------>")
-    for res in result_data:
-        print(res)
-    print("<------------- PRINTING OVER")
+def interpret_proc_mapping(result):
+    global heap_info, stack_info
+    pattern = re.compile(r'.*\[stack\].*|.*\[heap\].*')
+    matches = pattern.findall(result)
+    for match in matches:
+        parsed = match.strip()
+        parsed_list = parsed.split()
+        if "heap" in parsed:
+            heap_info = parsed_list
+        elif "stack" in parsed:
+            stack_info = parsed_list
 
 if __name__ == "__main__": 
     
@@ -237,7 +261,7 @@ if __name__ == "__main__":
                 result = result.replace("\n", VAR_SPLIT_VAL)
                 result = result.strip(VAR_SPLIT_VAL)
                 mc_output.append(result)
-            elif info_var_mode:
+            else:
                 mc_output.append(result.strip())
 
             # set sc_output for next command in mc query 
@@ -261,14 +285,22 @@ if __name__ == "__main__":
                 elif info_var_mode: 
                     mc_input, info_var_query_order = update_var_dictionary(info_var_query_order, mc_output)
                     if mc_input is None and info_var_query_order is None:
-                        mc_mode = False
-                        mc_input = None
-                        mc_output = None
+                        # finished local variable data collection, now get info about proc mappings for stack and heap
                         info_var_mode = False
-                        print_var_dict()
+                        mc_input = []
+                        mc_output = []
+                        gdb.send(INFO_MAPPINGS + '\n')
                     else: 
                         gdb.send(mc_input.pop(0) + '\n')
                         mc_output = []
+                else: 
+                    interpret_proc_mapping(mc_output[0])
+                    mc_mode = False
+                    mc_input = None
+                    mc_output = None
+                    print_var_dict()
+                    print_proc_mappings()
+                    generate_mem_image()
 
         # USER STDIN
         if sys.stdin in readable:
