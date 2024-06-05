@@ -300,7 +300,7 @@ if __name__ == "__main__":
                     mc_output = None
                     print_var_dict()
                     print_proc_mappings()
-                    generate_mem_image()
+                    generate_mem_image(all_vars, stack_info, heap_info)
 
         # USER STDIN
         if sys.stdin in readable:
