@@ -1,109 +1,119 @@
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyArrowPatch
+import matplotlib.patches as patches
+import matplotlib.patheffects as path_effects
+import matplotlib.cm as cm
+import numpy as np
 
-# Example memory data for stack and heap
-# Format: (address, size, type) where type is 'stack' or 'heap'
+# Example memory regions for testing with 10 variables
 memory_data = [
-    (0x1000, 10, 'stack'),
-    (0x1010, 30, 'stack'),
-    (0x2000, 15, 'heap'),
-    (0x2010, 20, 'heap'),
-    (0x1020, 4, 'stack'),
-    (0x2020, 25, 'heap'),
-    (0x1030, 18, 'stack'),
-    (0x1040, 12, 'stack'),
-    (0x2030, 22, 'heap'),
-    (0x2040, 8, 'heap'),
-    (0x1050, 16, 'stack'),
-    (0x1060, 14, 'stack'),
-    (0x2050, 26, 'heap'),
-    (0x2060, 17, 'heap'),
-    (0x1070, 9, 'stack')
+    (0x1000, 10, 'stack', 'var1'),
+    (0x1010, 15, 'heap', 'var2'),
+    (0x1020, 10, 'stack', 'var3'),
+    (0x1030, 15, 'heap', 'var4'),
+    (0x1040, 10, 'stack', 'var5'),
+    (0x1050, 15, 'heap', 'var6'),
+    (0x1060, 10, 'stack', 'var7'),
+    (0x1070, 15, 'heap', 'var8'),
+    (0x1080, 10, 'stack', 'var9'),
+    (0x1090, 15, 'heap', 'var10')
 ]
 
-# Example pointer data (source address, target address)
+# Example pointer data for 10 variables
 pointer_data = [
-    (0x1000, 0x2010),  # Pointer from stack to heap
-    (0x1010, 0x2000),  # Pointer from stack to heap
-    (0x2000, 0x2040),  # Pointer within heap
-    (0x2020, 0x2050),
-    (0x1030, 0x2060)   # Pointer from stack to heap
+    (0x1000, 0x1010),
+    (0x1020, 0x1030),
+    (0x1040, 0x1050),
+    (0x1060, 0x1070),
+    (0x1080, 0x1090),
+    (0x1010, 0x1020),
+    (0x1030, 0x1040),
+    (0x1050, 0x1060),
+    (0x1070, 0x1080),
+    (0x1090, 0x1000)
 ]
 
-# Normalize or scale memory addresses if necessary
-base_address = min(addr for addr, size, mem_type in memory_data)
-memory_data = [(addr - base_address, size, mem_type) for addr, size, mem_type in memory_data]
-pointer_data = [(src - base_address, tgt - base_address) for src, tgt in pointer_data]
+# Set a smaller fixed chunk size
+fixed_chunk_size = 2
 
-# Separate stack and heap data
-stack_data = [(addr, size) for addr, size, mem_type in memory_data if mem_type == 'stack']
-heap_data = [(addr, size) for addr, size, mem_type in memory_data if mem_type == 'heap']
+# Calculate the total number of chunks needed
+total_chunks = len(memory_data)
 
-# Create figure and axes
-fig, ax = plt.subplots(figsize=(20, 10))
+# Dynamically adjust the figure height
+fig_height = total_chunks * (fixed_chunk_size / 2)
+fig, ax = plt.subplots(figsize=(10, fig_height))
 
-# Define offsets for stack and heap sections
-stack_x_offset = 0
-heap_x_offset = max(addr + size for addr, size in stack_data) + 20
+# Function to add text with outline
+def add_text_with_outline(x, y, text, ax, fontsize=6, color='black', outline_color='white', outline_width=1):
+    txt = ax.text(x, y, text, ha='center', va='center', fontsize=fontsize, color=color, weight='bold')
+    txt.set_path_effects([path_effects.Stroke(linewidth=outline_width, foreground=outline_color), path_effects.Normal()])
 
-# Function to plot memory sections
-def plot_memory(ax, data, x_offset, color):
-    y_position = 0
-    positions = []
-    for addr, size in data:
-        bar = ax.barh(y=y_position, width=size, height=0.5, left=x_offset, align='center', color=color)
-        ax.text(x_offset + size / 2, y_position, f'{hex(addr + base_address)}', ha='center', va='center', color='white', fontsize=8, weight='bold')
-        positions.append((addr, x_offset, y_position, size, bar))
-        y_position -= 1
-    return positions
+# Function to find all nodes in the same chain
+def find_chain(start_node, pointers):
+    chain = set()
+    nodes_to_visit = [start_node]
+    while nodes_to_visit:
+        current_node = nodes_to_visit.pop()
+        if current_node not in chain:
+            chain.add(current_node)
+            nodes_to_visit.extend(tgt for src, tgt in pointers if src == current_node)
+    return chain
 
-# Plot stack and heap sections
-stack_positions = plot_memory(ax, stack_data, stack_x_offset, 'blue')
-heap_positions = plot_memory(ax, heap_data, heap_x_offset, 'green')
-
-# Add pointers between sections and within sections
+# Identify chains
+chains = []
+visited_nodes = set()
 for src, tgt in pointer_data:
-    if src in [addr for addr, size in stack_data]:
-        src_x_position = next(x_pos for addr, x_pos, y_pos, size, bar in stack_positions if addr == src)
-        src_y_position = next(y_pos for addr, x_pos, y_pos, size, bar in stack_positions if addr == src)
-        src_size = next(size for addr, size in stack_data if addr == src)
-    else:
-        src_x_position = next(x_pos for addr, x_pos, y_pos, size, bar in heap_positions if addr == src)
-        src_y_position = next(y_pos for addr, x_pos, y_pos, size, bar in heap_positions if addr == src)
-        src_size = next(size for addr, size in heap_data if addr == src)
-    
-    tgt_x_position = next((x_pos for addr, x_pos, y_pos, size, bar in stack_positions if addr == tgt), None)
-    if tgt_x_position is None:
-        tgt_x_position = next(x_pos for addr, x_pos, y_pos, size, bar in heap_positions if addr == tgt)
-        tgt_y_position = next(y_pos for addr, x_pos, y_pos, size, bar in heap_positions if addr == tgt)
-    else:
-        tgt_y_position = next(y_pos for addr, x_pos, y_pos, size, bar in stack_positions if addr == tgt)
+    if src not in visited_nodes:
+        chain = find_chain(src, pointer_data)
+        chains.append(chain)
+        visited_nodes.update(chain)
 
-    start = (src_x_position + src_size / 2, src_y_position)
-    end = (tgt_x_position, tgt_y_position)
+colors = cm.rainbow(np.linspace(0, 1, len(chains)))
+color_map = {node: colors[i] for i, chain in enumerate(chains) for node in chain}
 
-    arrow = FancyArrowPatch(start, end, connectionstyle="arc3,rad=-0.5", arrowstyle="->,head_length=5,head_width=3", color='red', lw=2)
-    ax.add_patch(arrow)
+# Plot the stack
+y_position_stack = 0
+stack_positions = {}
+for addr, size, region, var_name in memory_data:
+    if region == 'stack':
+        rect = patches.Rectangle((1, y_position_stack), 1, fixed_chunk_size, edgecolor='black', facecolor=color_map.get(addr, 'skyblue'))
+        ax.add_patch(rect)
+        add_text_with_outline(1.5, y_position_stack + fixed_chunk_size / 2, f'{var_name}\n(0x{addr:X})', ax, fontsize=6)
+        stack_positions[addr] = y_position_stack
+        y_position_stack += fixed_chunk_size
 
-# Customize plot
-ax.set_xlabel('Memory Offset from Base Address')
+# Plot the heap
+y_position_heap = 0
+heap_positions = {}
+for addr, size, region, var_name in memory_data:
+    if region == 'heap':
+        rect = patches.Rectangle((4, y_position_heap), 1, fixed_chunk_size, edgecolor='black', facecolor=color_map.get(addr, 'lightgreen'))
+        ax.add_patch(rect)
+        add_text_with_outline(4.5, y_position_heap + fixed_chunk_size / 2, f'{var_name}\n(0x{addr:X})', ax, fontsize=6)
+        heap_positions[addr] = y_position_heap
+        y_position_heap += fixed_chunk_size
+
+# Plot the pointers with curved arrows and different colors
+for src, tgt in pointer_data:
+    src_x = 2 if src in stack_positions else 5
+    tgt_x = 2 if tgt in stack_positions else 5
+    src_y = stack_positions.get(src, heap_positions.get(src, 0))
+    tgt_y = stack_positions.get(tgt, heap_positions.get(tgt, 0))
+    connection_style = "arc3,rad=0.5" if src_y != tgt_y else "arc3,rad=0"
+    arrow_color = color_map.get(src, 'red')
+    ax.annotate('', xy=(tgt_x, tgt_y), xytext=(src_x, src_y),
+                arrowprops=dict(arrowstyle='->', color=arrow_color, connectionstyle=connection_style))
+
+# Set the limits and labels
+ax.set_xlim(0, 6)
+ax.set_ylim(0, max(y_position_stack, y_position_heap))
+ax.set_xticks([1.5, 4.5])
+ax.set_xticklabels(['Stack', 'Heap'])
 ax.set_yticks([])
-ax.set_title('Memory Allocation Visualization with Pointers')
-ax.legend(handles=[plt.Rectangle((0,0),1,1, color='blue', ec='k', lw=1, label='Stack'),
-                   plt.Rectangle((0,0),1,1, color='green', ec='k', lw=1, label='Heap')],
-          bbox_to_anchor=(1.05, 1), loc='upper left')
 
-# Adjust axis limits and add padding
-max_x_position_stack = sum(size for addr, size in stack_data) + 10
-max_x_position_heap = sum(size for addr, size in heap_data) + 10
-ax.set_xlim(0, max_x_position_stack + max_x_position_heap + 20)
-ax.set_ylim(-len(stack_data) - len(heap_data) - 2, 2)
-
-# Add vertical line to separate stack and heap sections
-ax.axvline(x=heap_x_offset - 10, color='black', linestyle='--')
+plt.title('Memory Visualization: Stack and Heap')
 
 # Save the plot to a file
-plt.savefig('memory_allocation_visualization_with_heap_and_stack_axes.png')
+output_file = 'memory_visualization_with_addresses_fixed_chunks.png'
+plt.savefig(output_file, bbox_inches='tight')
 
-# Display the plot
-plt.show()
+print(f"Memory visualization saved to {output_file}")

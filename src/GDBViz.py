@@ -32,6 +32,8 @@ class Var:
 
 def print_var_dict():
     for key in all_vars.keys():
+        if "compFile" in key:
+            continue
         print("<----------->")
         print("Printing info about var: " + key)
         print("type = " + all_vars[key].type)
@@ -61,6 +63,17 @@ def print_proc_mappings():
         print("There is no Heap") 
     print("<------------->")
 
+def check_dict_values():
+    remove_list = []
+    for key in all_vars.keys():
+        if "0x0" in all_vars[key].address:
+            remove_list.append(key)
+        if "(" in key and ")" in key and "0x0" in all_vars[key].value:
+            remove_list.append(key)
+
+    for ele in remove_list:
+        if ele in all_vars:
+            del all_vars[ele]
     
 # helper method used to read from gdb pipes
 def read_fd (fd):
@@ -86,9 +99,11 @@ def generate_var_info_command(info_local_result):
         var_list = info_local_result[i].split(VAR_SPLIT_VAL)
         for var in var_list: 
             split = var.split("=")
-            name = split[0].strip()
-            value = split[1].strip()
-            all_vars[name] = Var(name, frame_number, value)
+            if len(split) > 1:
+                name = split[0].strip()
+                all_vars[name] = Var(name, frame_number)
+            else: 
+                continue
         frame_number += 1
     
     var_query_order = []
@@ -113,9 +128,11 @@ def generate_var_info_command(info_local_result):
 def update_var_dictionary(var_query_order, var_info_result):
     pattern = re.compile(r'\s*([^{};]+?;)\s*') # to remove from struct type = {...}
     var_info_index = 0
-
     var_order = []
+ 
     for var in var_query_order:
+
+        print(var_info_result[var_info_index + 1])
         all_vars[var].type = var_info_result[var_info_index + 1].split("=")[1].strip()
         all_vars[var].size = var_info_result[var_info_index + 2].split("=")[1].strip()
         all_vars[var].address = var_info_result[var_info_index + 3].split("=")[1].strip()
@@ -123,11 +140,10 @@ def update_var_dictionary(var_query_order, var_info_result):
             all_vars[var].value = var_info_result[var_info_index + 4]
         else: 
             all_vars[var].value = var_info_result[var_info_index + 4].split("=")[1].strip()
-        #print(all_vars[var].value)
         var_info_index += 5
 
         # checks if var is a struct and needs further querying     
-        if STRUCT in all_vars[var].type and all_vars[var].type[-2:] != "**" and all_vars[var].value[-3:] != "0x0" and NO_ACCESS_PHRASE not in all_vars[var].value:
+        if STRUCT in all_vars[var].type and all_vars[var].type[-1:] != "]" and all_vars[var].type[-1:] != "*" and (all_vars[var].value[-3:] != "0x0" or NO_ACCESS_PHRASE not in all_vars[var].value):
             matches = pattern.findall(all_vars[var].type)
             members = [match.strip().strip(';') for match in matches]
             for mem in members: 
@@ -143,6 +159,10 @@ def update_var_dictionary(var_query_order, var_info_result):
                 new_var_name = var + "." + attr_name
                 all_vars[new_var_name] = Var(new_var_name, all_vars[var].frame)
                 var_order.append(new_var_name)
+        elif STRUCT in all_vars[var].type and all_vars[var].type[-2:] == " *":
+            new_var_name = "(*"+ var +")"
+            all_vars[new_var_name] = Var(new_var_name, all_vars[var].frame)
+            var_order.append(new_var_name)
               
                 
     command_list = []
@@ -298,6 +318,7 @@ if __name__ == "__main__":
                     mc_mode = False
                     mc_input = None
                     mc_output = None
+                    check_dict_values()
                     print_var_dict()
                     print_proc_mappings()
                     generate_mem_image(all_vars, stack_info, heap_info)
