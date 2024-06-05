@@ -1,5 +1,5 @@
 from Connection import Connection
-from visualization import generate_mem_image
+from MemImage import generate_mem_image
 import os
 import select
 import sys

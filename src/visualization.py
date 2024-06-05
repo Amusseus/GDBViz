@@ -1,15 +1,6 @@
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 
-# takes in dictionary containg all variable information, proc mappings information (stack and heap), 
-# and optional filename for image and generates a memory image 
-def generate_mem_image(var_dict, stack_info, heap_info, filename=None):
-    print("Implement here")
-
-
-
-
-
 # Example memory data for stack and heap
 # Format: (address, size, type) where type is 'stack' or 'heap'
 memory_data = [
