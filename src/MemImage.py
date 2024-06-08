@@ -9,24 +9,36 @@ import re
 #takes in dictionary containg all variable information, proc mappings information (stack and heap), 
 # and optional filename for image and generates a memory image 
 def generate_mem_image(var_dict, stack_info, heap_info, filename=None):
-    print("Implement here")
     stack_start = stack_info[0]
     stack_end = stack_info[1]
     heap_start = heap_info[0]
     heap_end = heap_info[1]
 
-    print(stack_start)
-    print(stack_end)
-    print(heap_start)
-    print(heap_end)
     memory_data = []
     pointer_data = []
     pointer_name = []
 
+
+    # subset of all vars which are not attributes of a struct, if value is None then the var is not a pointer or does not point to a struct,
+    # if val is a list then it is a list of all of the struct's attributes that point somewhere   
+    non_attr_vars = {} 
+    for var in var_dict: 
+        dot_index = var.rfind(".")
+        if dot_index == -1 or var[-1] == ")": 
+            # a non attribute variable 
+            if "struct"  in var_dict[var].type:
+                non_attr_vars[var] = []
+            else: 
+                non_attr_vars[var] = None
+
+    # parse through all the variables in the dictionary 
     for var in var_dict:
         var_name = var_dict[var].name
         var_address = var_dict[var].address
         var_type = var_dict[var].type
+        var_val = var_dict[var].value
+        var_in_data_struct = ""
+
         
         # Extract the hexadecimal address using regular expressions
         match = re.search(r'0x[0-9a-fA-F]+', var_address)
@@ -35,8 +47,6 @@ def generate_mem_image(var_dict, stack_info, heap_info, filename=None):
         
         # Convert to integer for comparison
         var_address_int = int(var_address, 16)
-        var_val = var_dict[var].value
-        var_in_data_struct = ""
 
         if int(stack_start, 16) <= var_address_int <= int(stack_end, 16):
             var_in_data_struct = "stack"
@@ -45,14 +55,33 @@ def generate_mem_image(var_dict, stack_info, heap_info, filename=None):
         else:
             var_in_data_struct = ""
 
-        pattern = re.compile(r'\(.+ \*\) (0x[0-9a-f]+)')
 
+        # search for pointer
+        pattern = re.compile(r'\(.+ \*\) (0x[0-9a-f]+)') # looks for pointer data in val 
         match = pattern.search(var_val)
-        if match and len(var_in_data_struct) > 1:
-            pointer_data.append((hex(int(var_address[2:], 16) if var_address.startswith("0x") else int(var_address, 16)), hex(int(match.group(1)[2:], 16) if match.group(1).startswith("0x") else int(match.group(1), 16))))
-            pointer_name.append(var_name)
+        if match and len(var_in_data_struct) > 1: # in stack or heap with a pointer
+            name_to_use = var_name
+            dot_index = var.rfind(".")
+            if dot_index != -1:
+                struct_name = var[:var.rfind(")") + 1]
+                var_address = var_dict[struct_name].address
+                update = re.search(r'0x[0-9a-fA-F]+', var_address)
+                if update:
+                    var_address = update.group(0)
+                name_to_use = struct_name
+      
+            tuple_to_add = (hex(int(var_address[2:], 16) if var_address.startswith("0x") else int(var_address, 16)),
+                                hex(int(match.group(1)[2:], 16) if match.group(1).startswith("0x") else int(match.group(1), 16)))
+            if tuple_to_add in pointer_data: 
+                index = pointer_data.index(tuple_to_add)
+                pointer_name[index] += ", " + name_to_use
+            else:
+                pointer_name.append(name_to_use)
+                pointer_data.append(tuple_to_add)
         
-        memory_data.append((hex(int(var_address, 16) if var_address.startswith('0x') else int(var_address)), var_val, var_in_data_struct, var_name, var_type))
+        if var in non_attr_vars:
+            memory_data.append((hex(int(var_address, 16) if var_address.startswith('0x') else int(var_address)), var_val, var_in_data_struct, var_name, var_type))
+
 
     i = 0
     ('MEMORY DATA')
