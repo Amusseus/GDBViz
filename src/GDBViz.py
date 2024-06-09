@@ -319,8 +319,8 @@ if __name__ == "__main__":
                     mc_input = None
                     mc_output = None
                     check_dict_values()
-                    print_var_dict()
-                    print_proc_mappings()
+                    #print_var_dict()
+                    #print_proc_mappings()
                     generate_mem_image(all_vars, stack_info, heap_info)
 
         # USER STDIN
