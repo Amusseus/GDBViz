@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.patheffects as path_effects
-import random
 import matplotlib.cm as cm
 import numpy as np
 import re

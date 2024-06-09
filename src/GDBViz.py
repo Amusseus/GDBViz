@@ -32,8 +32,6 @@ class Var:
 
 def print_var_dict():
     for key in all_vars.keys():
-        if "compFile" in key:
-            continue
         print("<----------->")
         print("Printing info about var: " + key)
         print("type = " + all_vars[key].type)
@@ -131,8 +129,6 @@ def update_var_dictionary(var_query_order, var_info_result):
     var_order = []
  
     for var in var_query_order:
-
-        print(var_info_result[var_info_index + 1])
         all_vars[var].type = var_info_result[var_info_index + 1].split("=")[1].strip()
         all_vars[var].size = var_info_result[var_info_index + 2].split("=")[1].strip()
         all_vars[var].address = var_info_result[var_info_index + 3].split("=")[1].strip()
